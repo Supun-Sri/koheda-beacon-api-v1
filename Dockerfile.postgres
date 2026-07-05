@@ -1,0 +1,14 @@
+FROM postgis/postgis:16-3.4
+
+# Set default environment variables
+ENV POSTGRES_DB=koheda
+ENV POSTGRES_USER=koheda
+
+# Enable PostGIS extension
+RUN echo "CREATE EXTENSION IF NOT EXISTS postgis;" > /docker-entrypoint-initdb.d/10-postgis.sql
+
+# Copy migration files
+COPY migrations /docker-entrypoint-initdb.d/migrations
+
+# Expose PostgreSQL port
+EXPOSE 5432

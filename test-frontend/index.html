@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kohedha Beacon — Production Flow Test</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#c9d1d9}
+
+    /* Layout: two columns */
+    .layout{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+    .col{padding:16px;overflow-y:auto;max-height:100vh}
+    .col-consumer{border-right:2px solid #ffd33d}
+    .col-restaurant{border-left:2px solid #58a6ff}
+
+    /* Headers */
+    .col-header{padding:10px 0 12px;border-bottom:1px solid #21262d;margin-bottom:12px}
+    .col-header h2{font-size:18px;margin-bottom:2px}
+    .col-header .sub{font-size:12px;color:#8b949e}
+    .consumer-title{color:#ffd33d}
+    .restaurant-title{color:#58a6ff}
+
+    /* Cards */
+    .card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px;margin-bottom:10px}
+    .card-title{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px}
+    .card-sub{font-size:11px;color:#8b949e}
+    .card-sub span{margin-right:10px}
+
+    /* Forms */
+    label{display:block;font-size:11px;color:#8b949e;margin:8px 0 3px}
+    input,select{width:100%;padding:7px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:12px}
+    input:focus{outline:none;border-color:#58a6ff}
+
+    /* Tags */
+    .tag-grid{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+    .tag-btn{padding:4px 10px;background:#21262d;border:1px solid #30363d;border-radius:14px;cursor:pointer;font-size:11px;color:#8b949e;transition:all .15s;user-select:none}
+    .tag-btn:hover{border-color:#58a6ff;color:#58a6ff}
+    .tag-btn.selected{background:#0d2d1a;border-color:#2ea043;color:#56d364}
+    .tag-btn.match{background:#1a1d00;border-color:#9e6a03;color:#e3b341}
+
+    /* Buttons */
+    .btn{display:inline-block;padding:7px 14px;color:#fff;border:1px solid #30363d;border-radius:6px;cursor:pointer;font-size:12px;margin-top:6px;background:#21262d;transition:all .15s}
+    .btn:hover{background:#30363d}
+    .btn-gold{background:#6e4a00;border-color:#9e6a03;color:#ffd33d}.btn-gold:hover{background:#9e6a03}
+    .btn-green{background:#238636;border-color:#2ea043}.btn-green:hover{background:#2ea043}
+    .btn-blue{background:#1f6feb;border-color:#58a6ff}.btn-blue:hover{background:#388bfd}
+    .btn-red{background:#da3633;border-color:#f85149}.btn-red:hover{background:#b62324}
+    .btn:disabled{opacity:.4;cursor:not-allowed}
+    .btn-sm{padding:4px 10px;font-size:11px;margin-top:0}
+
+    /* Badges */
+    .badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase}
+    .badge-green{background:#0d2d1a;color:#56d364}.badge-red{background:#2d1117;color:#f85149}
+    .badge-yellow{background:#2d2200;color:#e3b341}.badge-blue{background:#0d1d31;color:#58a6ff}
+    .badge-purple{background:#1d0d31;color:#bc8cff}
+
+    /* Pipeline steps */
+    .step{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:6px;opacity:.35;transition:all .3s}
+    .step.active{opacity:1;border-color:#30363d}
+    .step.done{opacity:1;border-color:#2ea043}
+    .step-head{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#fff}
+    .step-body{margin-top:6px;font-size:11px;color:#8b949e}
+
+    /* Pulsing dot */
+    .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:#58a6ff;animation:blink 1s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    .pulse-gold{background:#ffd33d}
+
+    /* QR display */
+    .qr{text-align:center;padding:16px;background:#fff;border-radius:8px;color:#000;margin:8px 0}
+    .qr .code{font-size:26px;font-weight:900;font-family:monospace;letter-spacing:3px}
+    .qr .label{font-size:10px;color:#666;margin-top:3px}
+
+    /* Bid card */
+    .bid-card{border-left:3px solid #30363d;padding:6px 10px;margin-bottom:4px;background:#161b22;border-radius:0 6px 6px 0}
+    .bid-card.winner{border-left-color:#e3b341;background:#1a1d00}
+
+    /* Auction card in restaurant view */
+    .auction-card{background:#161b22;border:1px solid #1f6feb;border-radius:8px;padding:12px;margin-bottom:10px}
+    .auction-card.closed{border-color:#21262d;opacity:.6}
+
+    /* Timer */
+    .timer{font-family:monospace;font-weight:700;font-size:14px;color:#ffd33d}
+
+    /* Log */
+    .log-bar{position:fixed;bottom:0;left:0;right:0;background:#0d1117;border-top:1px solid #21262d;padding:4px 12px;font-family:monospace;font-size:10px;max-height:80px;overflow-y:auto;z-index:100}
+    .log-entry{padding:1px 0;color:#484f58}
+    .log-entry.ok{color:#56d364}.log-entry.err{color:#f85149}.log-entry.ws{color:#bc8cff}.log-entry.info{color:#58a6ff}
+
+    .row{display:flex;gap:8px;align-items:end}.row>*{flex:1}
+    .mt{margin-top:8px}
+    .mb-80{margin-bottom:80px}
+    .hidden{display:none}
+
+    @media(max-width:800px){.layout{grid-template-columns:1fr;}.col{max-height:none;border:none!important}}
+  </style>
+</head>
+<body>
+<div class="layout mb-80">
+  <!-- ════════════════ CONSUMER SIDE ════════════════ -->
+  <div class="col col-consumer">
+    <div class="col-header">
+      <h2 class="consumer-title">👤 Consumer</h2>
+      <div class="sub">Activate beacon → receive deals → claim</div>
+    </div>
+
+    <!-- Config -->
+    <div class="card" id="c-config">
+      <div class="card-title">Activate Beacon</div>
+      <label>User ID</label>
+      <input id="c-uid" value="consumer-01" />
+      <div class="row">
+        <div><label>Lat</label><input id="c-lat" value="6.9147"/></div>
+        <div><label>Lng</label><input id="c-lng" value="79.8536"/></div>
+      </div>
+      <label>Select Vibe Tags</label>
+      <div id="c-tags" class="tag-grid">Loading...</div>
+      <div class="mt">
+        <button class="btn btn-gold" id="c-btn-activate" onclick="consumerActivate()">🎯 Activate Beacon</button>
+        <button class="btn btn-red btn-sm hidden" id="c-btn-cancel" onclick="consumerCancel()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Beacon status -->
+    <div class="card hidden" id="c-beacon-status">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span class="badge badge-green">BEACON ACTIVE</span> <span class="timer" id="c-timer"></span></div>
+      </div>
+      <div class="card-sub mt" id="c-beacon-info"></div>
+    </div>
+
+    <!-- Pipeline -->
+    <div id="c-pipeline" class="hidden mt">
+      <div class="step" id="c-step-match"><div class="step-head"><span>🔍</span> Finding Matches</div><div class="step-body" id="c-step-match-body"></div></div>
+      <div class="step" id="c-step-auction"><div class="step-head"><span>⚡</span> Auction Running</div><div class="step-body" id="c-step-auction-body"></div></div>
+      <div class="step" id="c-step-deal"><div class="step-head"><span>🎁</span> Deal Available</div><div class="step-body" id="c-step-deal-body"></div></div>
+    </div>
+
+    <!-- Claimed deals -->
+    <div id="c-claims"></div>
+  </div>
+
+  <!-- ════════════════ RESTAURANT SIDE ════════════════ -->
+  <div class="col col-restaurant">
+    <div class="col-header">
+      <h2 class="restaurant-title">🍽️ Restaurant / Vendor</h2>
+      <div class="sub">See nearby beacons → place bids → win customers</div>
+    </div>
+
+    <!-- Restaurant selector -->
+    <div class="card">
+      <div class="card-title">Select Your Restaurant</div>
+      <select id="r-select" onchange="restaurantChanged()">
+        <option value="">Loading...</option>
+      </select>
+      <div id="r-info" class="card-sub mt"></div>
+    </div>
+
+    <!-- Open auctions for this restaurant -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="card-title">📡 Open Auctions</div>
+        <button class="btn btn-sm" onclick="refreshAuctions()">Refresh</button>
+      </div>
+      <div class="card-sub">Auctions where your restaurant is eligible to bid</div>
+      <div id="r-auctions" class="mt"></div>
+    </div>
+
+    <!-- Bid history / results -->
+    <div class="card">
+      <div class="card-title">📋 My Bid Results</div>
+      <div id="r-results"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="log-bar" id="log-bar">
+  <div id="log-entries"></div>
+</div>
+
+<script>
+const API = 'http://localhost:3000';
+
+// ─── State ───
+let consumerSocket = null;
+let restaurantSocket = null;
+let activeBeaconId = null;
+let activeUserId = null;
+let selectedTags = [];
+let timerInterval = null;
+let beaconExpiresAt = null;
+let currentRestaurantId = null;
+let auctionTimers = {};
+
+// ─── Helpers ───
+function log(msg, type = 'info') {
+  const el = document.getElementById('log-entries');
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML = `<div class="log-entry ${type}">[${t}] ${msg}</div>` + el.innerHTML;
+}
+
+async function api(method, path, body) {
+  try {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    const data = await res.json();
+    if (!res.ok) { log(`${method} ${path} → ${res.status}: ${data.error||'?'}`, 'err'); return null; }
+    return data;
+  } catch (e) { log(`Network: ${e.message}`, 'err'); return null; }
+}
+
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function $(id) { return document.getElementById(id); }
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadTags();
+  await loadRestaurants();
+  connectConsumerSocket();
+  connectRestaurantSocket();
+});
+
+// ═══════════════════════════════════════
+// CONSUMER SIDE
+// ═══════════════════════════════════════
+
+function connectConsumerSocket() {
+  consumerSocket = io(API, { transports: ['websocket', 'polling'] });
+
+  consumerSocket.on('connect', () => {
+    log('Consumer WS connected', 'ws');
+  });
+
+  consumerSocket.on('beacon:activated', d => {
+    log(`Beacon activated: ${d.beaconId}`, 'ws');
+  });
+
+  consumerSocket.on('beacon:matches_found', d => {
+    log(`Matches: ${d.passedCount} passed, ${d.shieldedCount} shielded`, 'ws');
+    renderConsumerMatches(d);
+  });
+
+  consumerSocket.on('auction:open', d => {
+    log(`Auction opened: ${d.auctionId} (${d.biddingWindowMs/1000}s window)`, 'ws');
+    renderConsumerAuction(d);
+  });
+
+  consumerSocket.on('auction:bid_placed', d => {
+    log(`Bid placed: ${d.restaurantName} → ${d.bidAmount} LKR`, 'ws');
+    addConsumerBidUpdate(d);
+  });
+
+  consumerSocket.on('auction:resolved', d => {
+    log(`Auction resolved: winner=${d.winner?.restaurant||'none'}`, 'ws');
+    renderConsumerAuctionResult(d);
+  });
+
+  consumerSocket.on('deal:available', d => {
+    log(`Deal available: ${d.deal.title} at ${d.deal.restaurant}`, 'ws');
+    renderConsumerDeal(d);
+  });
+
+  consumerSocket.on('beacon:expired', d => {
+    log('Beacon expired', 'ws');
+    resetConsumer();
+  });
+}
+
+async function loadTags() {
+  const data = await api('GET', '/api/vibe-tags');
+  if (!data) return;
+  $('c-tags').innerHTML = data.tags.map(t =>
+    `<div class="tag-btn" onclick="toggleTag('${t.name}',this)">${t.name}</div>`
+  ).join('');
+}
+
+function toggleTag(name, el) {
+  if (selectedTags.includes(name)) {
+    selectedTags = selectedTags.filter(t => t !== name);
+    el.classList.remove('selected');
+  } else {
+    selectedTags.push(name);
+    el.classList.add('selected');
+  }
+}
+
+async function consumerActivate() {
+  if (selectedTags.length === 0) { log('Select at least 1 vibe tag', 'err'); return; }
+
+  activeUserId = $('c-uid').value;
+  const lat = parseFloat($('c-lat').value);
+  const lng = parseFloat($('c-lng').value);
+
+  // Join user room
+  consumerSocket.emit('join:user', activeUserId);
+
+  $('c-btn-activate').disabled = true;
+  const data = await api('POST', '/api/beacon/activate', {
+    userId: activeUserId, lat, lng, vibeTags: selectedTags,
+  });
+
+  if (!data) { $('c-btn-activate').disabled = false; return; }
+
+  activeBeaconId = data.beaconId;
+  beaconExpiresAt = new Date(data.expiresAt);
+
+  // Join beacon room
+  consumerSocket.emit('join:beacon', data.beaconId);
+
+  // UI updates
+  hide('c-btn-activate');
+  show('c-btn-cancel');
+  show('c-beacon-status');
+  show('c-pipeline');
+  $('c-beacon-info').innerHTML = `<span>Tags: ${selectedTags.join(', ')}</span><span style="font-family:monospace;font-size:9px">${data.beaconId}</span>`;
+
+  // Pipeline: match step active
+  $('c-step-match').classList.add('active');
+  $('c-step-match-body').innerHTML = '<span class="pulse pulse-gold"></span> Searching for restaurants matching your vibe...';
+
+  // Start timer
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateConsumerTimer, 1000);
+  updateConsumerTimer();
+
+  log(`Beacon activated: ${data.beaconId}`, 'ok');
+}
+
+function updateConsumerTimer() {
+  if (!beaconExpiresAt) return;
+  const r = beaconExpiresAt - Date.now();
+  if (r <= 0) { $('c-timer').textContent = 'EXPIRED'; resetConsumer(); return; }
+  const h = Math.floor(r/3600000), m = Math.floor((r%3600000)/60000), s = Math.floor((r%60000)/1000);
+  $('c-timer').textContent = `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+async function consumerCancel() {
+  if (!activeBeaconId) return;
+  await api('POST', `/api/beacon/${activeBeaconId}/cancel`, { userId: activeUserId });
+  resetConsumer();
+  log('Beacon cancelled', 'ok');
+}
+
+function resetConsumer() {
+  activeBeaconId = null;
+  if (timerInterval) clearInterval(timerInterval);
+  hide('c-beacon-status'); hide('c-pipeline'); hide('c-btn-cancel');
+  show('c-btn-activate');
+  $('c-btn-activate').disabled = false;
+  ['c-step-match','c-step-auction','c-step-deal'].forEach(id => {
+    $(id).classList.remove('active','done');
+    $(id).querySelector('.step-body').innerHTML = '';
+  });
+}
+
+function renderConsumerMatches(d) {
+  $('c-step-match').classList.remove('active');
+  $('c-step-match').classList.add('done');
+
+  let html = `<div class="tag-grid"><span class="badge badge-green">${d.passedCount} matches</span><span class="badge badge-red">${d.shieldedCount} filtered</span></div>`;
+  if (d.passed) {
+    d.passed.slice(0, 4).forEach(m => {
+      html += `<div class="card" style="padding:6px 8px;margin:3px 0;border-left:3px solid #2ea043">
+        <div style="display:flex;justify-content:space-between"><span style="color:#fff;font-weight:600">${m.restaurant}</span><span class="badge badge-green">${m.matchPercent}</span></div>
+        <div class="card-sub"><span>📍 ${m.distance_km}km</span><span>⭐ ${m.rating||'?'}</span></div>
+      </div>`;
+    });
+    if (d.passed.length > 4) html += `<div class="card-sub">+${d.passed.length - 4} more</div>`;
+  }
+  $('c-step-match-body').innerHTML = html;
+
+  // Activate auction step
+  $('c-step-auction').classList.add('active');
+  $('c-step-auction-body').innerHTML = '<span class="pulse"></span> Waiting for restaurants to place bids...';
+}
+
+function renderConsumerAuction(d) {
+  $('c-step-auction-body').innerHTML = `
+    <div><span class="pulse"></span> <b>${d.eligibleRestaurants?.length || 0}</b> restaurants can bid</div>
+    <div class="card-sub">Bidding closes in <span class="timer" id="c-auction-timer">${Math.round(d.biddingWindowMs/1000)}s</span></div>
+    <div id="c-live-bids" class="mt"></div>`;
+  
+  // Countdown timer for auction
+  const endTime = new Date(d.biddingEndsAt).getTime();
+  const ti = setInterval(() => {
+    const rem = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+    const el = $('c-auction-timer');
+    if (el) el.textContent = rem + 's';
+    if (rem <= 0) clearInterval(ti);
+  }, 1000);
+}
+
+function addConsumerBidUpdate(d) {
+  const el = $('c-live-bids');
+  if (!el) return;
+  el.innerHTML += `<div class="bid-card"><span style="color:#fff">${d.restaurantName}</span> bid <span style="color:#e3b341;font-weight:700">${d.bidAmount} LKR</span> <span class="card-sub">η=${d.efficiencyScore}</span></div>`;
+}
+
+function renderConsumerAuctionResult(d) {
+  $('c-step-auction').classList.remove('active');
+  $('c-step-auction').classList.add('done');
+
+  let html = '';
+  if (d.winner) {
+    html = `<div class="bid-card winner">
+      <div style="color:#e3b341;font-weight:700">🏆 ${d.winner.restaurant} wins!</div>
+      <div class="card-sub"><span>Bid: ${d.winner.bidAmount} LKR</span><span>η=${d.winner.efficiencyScore}</span></div>
+    </div>`;
+    if (d.results && d.results.length > 1) {
+      html += `<div class="card-sub mt">${d.results.length - 1} other bid(s) outbid</div>`;
+    }
+    // Activate deal step
+    $('c-step-deal').classList.add('active');
+    $('c-step-deal-body').innerHTML = '<span class="pulse pulse-gold"></span> Winner is creating a deal for you...';
+  } else {
+    html = '<div class="card-sub">No bids received. Try again later.</div>';
+  }
+  $('c-step-auction-body').innerHTML = html;
+}
+
+function renderConsumerDeal(d) {
+  $('c-step-deal').classList.remove('active');
+  $('c-step-deal').classList.add('done');
+  const deal = d.deal;
+  $('c-step-deal-body').innerHTML = `
+    <div class="card" style="border-color:#2ea043;background:#0d2d1a;padding:10px">
+      <div style="font-size:15px;font-weight:800;color:#56d364">🎉 ${deal.title}</div>
+      <div style="color:#fff;margin:3px 0">${deal.restaurant}</div>
+      <div class="card-sub"><span>📍 ${deal.distance_km}km</span><span>🎯 ${deal.matchPercent}</span><span>🎟️ ${deal.claimsRemaining} claims left</span></div>
+      <button class="btn btn-green mt" onclick="claimDeal('${deal.id}')">🎟️ Claim This Deal</button>
+    </div>`;
+}
+
+async function claimDeal(dealId) {
+  const userId = $('c-uid').value || 'consumer-01';
+  const data = await api('POST', `/api/deal/${dealId}/claim`, { userId });
+  if (!data) return;
+
+  $('c-claims').innerHTML = `
+    <div class="card mt" style="border-color:#2ea043">
+      <div class="card-title" style="color:#56d364">✅ Deal Claimed!</div>
+      <div class="qr"><div class="code">${data.claimCode}</div><div class="label">Show to restaurant staff</div></div>
+      <div class="card-sub"><span>🍽️ ${data.restaurant}</span><span>⏱️ ${data.expiresIn}</span></div>
+      <div class="card-sub mt" style="font-style:italic">${data.note}</div>
+    </div>` + $('c-claims').innerHTML;
+
+  log(`Deal claimed: ${data.claimCode}`, 'ok');
+}
+
+// ═══════════════════════════════════════
+// RESTAURANT SIDE
+// ═══════════════════════════════════════
+
+function connectRestaurantSocket() {
+  restaurantSocket = io(API, { transports: ['websocket', 'polling'] });
+
+  restaurantSocket.on('connect', () => {
+    log('Restaurant WS connected', 'ws');
+    // Join global restaurant room
+    restaurantSocket.emit('join:restaurant', 'all');
+  });
+
+  restaurantSocket.on('auction:open', d => {
+    log(`[R] New auction! ${d.auctionId}`, 'ws');
+    if (currentRestaurantId) renderAuctionForRestaurant(d);
+  });
+
+  restaurantSocket.on('auction:bid_placed', d => {
+    log(`[R] Bid update: ${d.restaurantName} → ${d.bidAmount} LKR`, 'ws');
+  });
+
+  restaurantSocket.on('auction:resolved', d => {
+    log(`[R] Auction resolved`, 'ws');
+    if (d.yourResult) {
+      const isWin = d.yourResult.status === 'WINNER';
+      addBidResult(d.yourResult, d.winner, isWin);
+    }
+    refreshAuctions();
+  });
+
+  restaurantSocket.on('deal:available', d => {
+    log(`[R] Deal created from your win: ${d.deal.title}`, 'ws');
+  });
+}
+
+async function loadRestaurants() {
+  const data = await api('GET', '/api/restaurants');
+  if (!data) return;
+  const sel = $('r-select');
+  sel.innerHTML = '<option value="">— Select restaurant —</option>' +
+    data.restaurants.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+}
+
+function restaurantChanged() {
+  currentRestaurantId = $('r-select').value;
+  if (!currentRestaurantId) { $('r-info').innerHTML = ''; return; }
+
+  // Join restaurant-specific room
+  restaurantSocket.emit('join:restaurant', currentRestaurantId);
+  log(`Joined as restaurant: ${currentRestaurantId}`, 'ok');
+
+  $('r-info').innerHTML = '<span class="badge badge-blue">LISTENING</span> Waiting for nearby beacons...';
+  $('r-results').innerHTML = '';
+  refreshAuctions();
+}
+
+async function refreshAuctions() {
+  if (!currentRestaurantId) return;
+  const data = await api('GET', `/api/restaurant/${currentRestaurantId}/auctions`);
+  if (!data) return;
+
+  const el = $('r-auctions');
+  if (data.auctions.length === 0) {
+    el.innerHTML = '<div class="card-sub">No open auctions right now. Waiting for a consumer to activate a beacon...</div>';
+    return;
+  }
+
+  el.innerHTML = data.auctions.map(a => {
+    const rem = Math.max(0, Math.round(a.remainingMs / 1000));
+    const match = a.myMatch;
+    return `
+    <div class="auction-card" id="auction-${a.auctionId}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="card-title">🎯 Beacon Auction</div>
+        <span class="badge badge-yellow">⏱️ <span id="at-${a.auctionId}">${rem}s</span></span>
+      </div>
+      <div class="card-sub mt">
+        <span>Consumer wants: <b style="color:#e3b341">${a.consumerTags.join(', ')}</b></span>
+      </div>
+      ${match ? `
+      <div class="card mt" style="padding:8px;border-left:3px solid #2ea043">
+        <div class="card-sub"><span>Your match: <b style="color:#56d364">${match.matchPercent}</b></span><span>📍 ${match.distance_km}km</span><span>📶 ψ=${match.signalStrength}</span></div>
+        <div class="tag-grid mt">
+          ${(match.matchedTags||[]).map(t => `<span class="tag-btn match">${t}</span>`).join('')}
+        </div>
+      </div>
+      <div class="row mt">
+        <div><label>Bid Amount (LKR)</label><input type="number" id="bid-${a.auctionId}" value="500" min="300" max="10000" step="50"/></div>
+        <div style="flex:0;padding-bottom:1px"><button class="btn btn-blue" onclick="placeBid('${a.auctionId}')">💰 Place Bid</button></div>
+      </div>` : '<div class="card-sub mt">Not eligible for this auction</div>'}
+    </div>`;
+  }).join('');
+
+  // Start auction countdown timers
+  data.auctions.forEach(a => {
+    if (auctionTimers[a.auctionId]) clearInterval(auctionTimers[a.auctionId]);
+    const endTime = new Date(a.biddingEndsAt).getTime();
+    auctionTimers[a.auctionId] = setInterval(() => {
+      const rem = Math.max(0, Math.round((endTime - Date.now()) / 1000));
+      const tel = $(`at-${a.auctionId}`);
+      if (tel) tel.textContent = rem + 's';
+      if (rem <= 0) {
+        clearInterval(auctionTimers[a.auctionId]);
+        const card = $(`auction-${a.auctionId}`);
+        if (card) { card.classList.add('closed'); card.querySelector('.badge-yellow').innerHTML = 'CLOSED'; }
+      }
+    }, 1000);
+  });
+}
+
+async function placeBid(auctionId) {
+  const bidInput = $(`bid-${auctionId}`);
+  const bidAmount = parseInt(bidInput.value);
+
+  if (isNaN(bidAmount) || bidAmount < 300) { log('Min bid is 300 LKR', 'err'); return; }
+
+  const data = await api('POST', `/api/auction/${auctionId}/bid`, {
+    restaurantId: currentRestaurantId,
+    bidAmount,
+  });
+
+  if (data) {
+    log(`Bid placed: ${data.bidAmount} LKR (η=${data.efficiencyScore})`, 'ok');
+    // Disable button
+    const btn = bidInput.closest('.row').querySelector('.btn');
+    btn.disabled = true;
+    btn.textContent = '✅ Bid Placed';
+
+    // Show confirmation
+    const card = $(`auction-${auctionId}`);
+    if (card) {
+      card.innerHTML += `
+        <div class="card mt" style="padding:6px 8px;border-left:3px solid #58a6ff">
+          <div class="card-sub"><span>Your bid: <b style="color:#58a6ff">${data.bidAmount} LKR</b></span><span>η = ${data.efficiencyScore}</span><span>Waiting for result...</span></div>
+        </div>`;
+    }
+  }
+}
+
+function addBidResult(result, winner, isWin) {
+  const el = $('r-results');
+  el.innerHTML = `
+    <div class="card ${isWin ? '' : ''}" style="border-left:3px solid ${isWin?'#e3b341':'#da3633'}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="card-title">${isWin ? '🏆 You Won!' : '❌ Outbid'}</div>
+        <span class="badge ${isWin?'badge-yellow':'badge-red'}">#${result.rank}</span>
+      </div>
+      <div class="card-sub mt">
+        <span>Your bid: ${result.bidAmount} LKR</span>
+        <span>η = ${result.efficiencyScore}</span>
+      </div>
+      ${!isWin && winner ? `<div class="card-sub mt">Winner: ${winner.restaurant} (${winner.bidAmount} LKR)</div>` : ''}
+      ${isWin ? '<div class="card-sub mt" style="color:#56d364">Deal has been created automatically!</div>' : ''}
+    </div>` + el.innerHTML;
+}
+
+// Render auction notification that comes via WebSocket
+function renderAuctionForRestaurant(d) {
+  // Check if this restaurant is eligible
+  const isEligible = d.eligibleRestaurants?.some(r => r.restaurant_id === currentRestaurantId);
+  if (isEligible) {
+    // Refresh to show the new auction
+    setTimeout(refreshAuctions, 500);
+  }
+}
+</script>
+</body>
+</html>
